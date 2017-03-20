@@ -1,0 +1,2 @@
+wpa_supplicant -c/data/misc/wifi/wpa_supplicant.conf -Dnl80211 -iwlan0 -B
+dhcpcd wlan0
