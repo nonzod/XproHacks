@@ -12,66 +12,68 @@ admin: 61 64 6d 69 6e 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 0
 12345: 31 32 33 34 35 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
 '''
 import socket
-import time
 import threading
 
-host = '192.168.100.1'
+host = '192.168.10.71'
 port = 6666
 
-mySocket = socket.socket()
-mySocket.connect((host, port))
+controlSocket = socket.socket()
+controlSocket.connect((host, port))
+
+videoSocket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+videoSocket.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 1)
+videoSocket.bind(('0.0.0.0', 6840))
+
+proxySocket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+proxySocket.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 1)
 
 
 def login():
-    mySocket.send(bytes.fromhex('ab cd 00 81 00 00 01 10 61 64 6d 69 6e 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 31 32 33 34 35 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00'))
-    mySocket.send(bytes.fromhex('ab cd 00 00 00 00 01 12'))
-    print(mySocket.recv(1024))
-    print(mySocket.recv(1024))
+    print('Login!')
+    controlSocket.send(bytes.fromhex('ab cd 00 81 00 00 01 10 61 64 6d 69 6e 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 31 32 33 34 35 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00'))
+    print('Login Response:')
+    print(controlSocket.recv(1024))
+    print('Login Confirm!')
+    controlSocket.send(bytes.fromhex('ab cd 00 00 00 00 01 13'))
+    print('Confirm Response:')
+    print(controlSocket.recv(1024))
 
 
+def get_firmware_version():
+    print('Request Firmware version!')
+    controlSocket.send(bytes.fromhex('ab cd 00 00 00 00 a0 34'))
+    print('Firmware version:')
+    print(controlSocket.recv(1024))
 
-def boh():
-    mySocket.send(bytes.fromhex('AB CD 00 04 00 00 a0 3e 01 00 00 00'))
-    mySocket.send(bytes.fromhex('AB CD 00 00 00 00 a0 34'))  # request_firmware_info
-    print(mySocket.recv(1024))
+
+def start_video_stream():
+    print('Start video stream!')
+    controlSocket.send(bytes.fromhex('ab cd 00 08 00 00 01 ff'))
+    controlSocket.send(bytes.fromhex('ab cd 00 00 00 00 01 12'))
 
 
 def ping():
-    mySocket.send(bytes.fromhex('AB CD 00 00 00 00 01 12'))  # Alive Request
-    print(mySocket.recv(1024))
-    threading.Timer(10, ping).start()
+    # print('Ping!')
+    controlSocket.send(bytes.fromhex('ab cd 00 00 00 00 01 12'))
+    # print('Pong:')
+    # print(controlSocket.recv(1024))
+    threading.Timer(3, ping).start()
 
 
-def start_video():
-    mySocket.send(bytes.fromhex('AB CD 00 00 00 00 01 FF 00 00 00 00 00 00 00 00'))  # Start Preview Stream
-    mySocket.send(bytes.fromhex('AB CD 00 24 00 00 a0 11 28 00 00 00 03 00 00 00 13 00 00 00 12 00 00 00 03 00 00 00 e1 07 00 00 00 00 00 00 00 00 00 00 00 00 00 00'))
-    mySocket.send(bytes.fromhex('AB CD 00 00 00 00 a0 34 ab cd 00000000 a0 2a'))
-    print(mySocket.recv(1024))
-
-
-def boh2():
-    mySocket.send(bytes.fromhex('AB CD 00 00 00 00 A0 2a'))
-    print(mySocket.recv(1024))
-
-
-def boh3():
-    mySocket.send(bytes.fromhex('AB CD 00 08 00 00 02 ff 00 00 00 00 00 00 00 00'))
-    print(mySocket.recv(1024))
+def listen():
+    print("Dump video stream:")
+    while True:
+        recvpack, payload = videoSocket.recvfrom(2048)
+        control = recvpack.hex()[14:16]
+        if control == "01":
+            proxySocket.sendto(recvpack[8:], ('127.0.0.1', 8888))
+        elif control == "02":
+            continue
 
 
 if __name__ == '__main__':
     login()
-    boh()
-    # request_firmware_info()
-    start_video()
-    boh2()
-    boh2()
-    boh2()
-    boh2()
-    boh2()
-    boh2()
-    boh2()
-    boh3()
+    get_firmware_version()
+    start_video_stream()
     ping()
-    # data = mySocket.recv(1024)
-    # mySocket.close()
+    listen()
