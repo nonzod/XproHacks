@@ -13,62 +13,90 @@ admin: 61 64 6d 69 6e 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 0
 '''
 import socket
 import threading
+import signal
+import sys
+import struct
 
-host = '192.168.10.71'
+host = '192.168.10.65'
 port = 6666
 
 controlSocket = socket.socket()
 controlSocket.connect((host, port))
 
 videoSocket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-videoSocket.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 1)
+videoSocket.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 0)
+videoSocket.setsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF, 0)
 videoSocket.bind(('0.0.0.0', 6840))
 
 proxySocket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-proxySocket.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 1)
+proxySocket.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 0)
+proxySocket.setsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF, 0)
+
+__response = ''
 
 
 def login():
-    print('Login!')
+    # print('Login!')
     controlSocket.send(bytes.fromhex('ab cd 00 81 00 00 01 10 61 64 6d 69 6e 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 31 32 33 34 35 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00'))
-    print('Login Response:')
-    print(controlSocket.recv(1024))
-    print('Login Confirm!')
+    __response = controlSocket.recv(1024)
+    # print('Login Response:')
+    # print(controlSocket.recv(1024))
+    # print('Login Confirm!')
     controlSocket.send(bytes.fromhex('ab cd 00 00 00 00 01 13'))
-    print('Confirm Response:')
-    print(controlSocket.recv(1024))
+    __response = controlSocket.recv(1024)
+    # print('Confirm Response:')
+    # print(controlSocket.recv(1024))
 
 
 def get_firmware_version():
-    print('Request Firmware version!')
+    # print('Request Firmware version!')
     controlSocket.send(bytes.fromhex('ab cd 00 00 00 00 a0 34'))
-    print('Firmware version:')
-    print(controlSocket.recv(1024))
+    __response = controlSocket.recv(1024)
+    # print('Firmware version:')
+    # print(controlSocket.recv(1024))
 
 
 def start_video_stream():
-    print('Start video stream!')
+    # print('Start video stream!')
     controlSocket.send(bytes.fromhex('ab cd 00 08 00 00 01 ff'))
     controlSocket.send(bytes.fromhex('ab cd 00 00 00 00 01 12'))
+    __response = controlSocket.recv(1024)
 
 
 def ping():
     # print('Ping!')
     controlSocket.send(bytes.fromhex('ab cd 00 00 00 00 01 12'))
+    __response = controlSocket.recv(1024)
     # print('Pong:')
     # print(controlSocket.recv(1024))
-    threading.Timer(3, ping).start()
+    threading.Timer(10, ping).start()
 
 
 def listen():
     print("Dump video stream:")
+    __seq = 0
+    __fb = b''
+    __el = 0
     while True:
-        recvpack, payload = videoSocket.recvfrom(2048)
-        control = recvpack.hex()[14:16]
-        if control == "01":
-            proxySocket.sendto(recvpack[8:], ('127.0.0.1', 8888))
-        elif control == "02":
-            continue
+        signal.signal(signal.SIGINT, exit)
+        recvpack, payload = videoSocket.recvfrom(1024)
+        control = recvpack[7]
+        if control == b'\x01':
+            __fb += recvpack[8:]
+        elif control == b'\x02':
+            __rtp = b'\x80\x63'
+            __rtp += struct.pack('>hi', __seq, (__el * 90))
+            __rtp += b'\x00\x00\x00\x00\x00\x00\x00\x00'
+            __rtp = __rtp + __fb
+            proxySocket.sendto(__rtp, ('127.0.0.1', 8888))
+            __fb = b''
+            __seq += 1
+            __el = ord(recvpack[20])
+
+
+def exit(signal, frame):
+    print('Bye!')
+    sys.exit(0)
 
 
 if __name__ == '__main__':
