@@ -85,7 +85,7 @@ def listen():
             __fb += recvpack[8:]
         elif control == 2:
             __el = ord(recvpack[20])
-            __rtp = struct.pack('>2shi4x', b'\x80\x63', __seq, (__el * 90))
+            __rtp = struct.pack('>2shi4x', b'\x80\x63', __seq, (__el * 90)) + __fb
             proxySocket.sendto(__rtp, ('127.0.0.1', 8888))
             __fb = b''
             __seq += 1
